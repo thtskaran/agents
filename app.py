@@ -80,6 +80,7 @@ def create_agent():
     description = data.get("description", "")
     name = data.get("name", "Untitled Agent")
     instructions = data.get("instructions", "You are a helpful AI assistant.") # Base instructions
+    pcode = data.get("pcode") # Get pcode from request data
 
     if not user_id:
         return jsonify({"error": "userId is required"}), 400
@@ -140,6 +141,7 @@ def create_agent():
             name=name,
             description=description,
             permissions=json.dumps(valid_permissions), # Store valid permissions as JSON list
+            pcode=pcode, # Add pcode to the new agent
             instructions=instructions,
             file_path=file_path,
             status='created' # Initial status
@@ -237,12 +239,12 @@ def start_agent(agent_id):
         process = subprocess.Popen(
             command,
             env=agent_env,
-            # Remove this line causing the conflict
-            # preexec_fn=os.setsid if os.name == 'posix' else None,
+            preexec_fn=os.setsid if os.name == 'posix' else None,
             creationflags=creationflags,
-            # Keep these options
-            close_fds=True,
-            start_new_session=True,
+            # Only close non-standard file descriptors
+            close_fds=False if sys.platform == 'darwin' else True,
+            # Remove this as it conflicts with preexec_fn on some platforms
+            # start_new_session=True,
         )
         # You could implement a more robust check (e.g., try connecting to agent's /health)
         time.sleep(2)
@@ -344,21 +346,9 @@ def stop_agent(agent_id):
 
 @app.route("/users", methods=["GET"])
 def get_all_users():
-    # Basic implementation - consider security/pagination for real apps
+    # Using the to_dict method from the model for consistency
     users = Users.query.all()
-    users_list = [
-        {
-            "id": user.id,
-            "firstname": user.firstname,
-            "lastname": user.lastname,
-            "email": user.email,
-            # Exclude password hash from response!
-            "email_verified": user.email_verified,
-            "createdAt": user.createdAt.isoformat(),
-            "updatedAt": user.updatedAt.isoformat(),
-        } for user in users
-    ]
-    return jsonify(users_list)
+    return jsonify([user.to_dict() for user in users])
 
 # Add POST /users for creation (ensure password hashing!)
 
