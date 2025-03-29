@@ -1,0 +1,10 @@
+# requirements.txt
+Flask>=2.0
+Flask-SQLAlchemy>=2.5
+python-dotenv>=0.19
+agno
+groq
+psycopg2-binary # <-- Make sure this line is present and uncommented
+# psycopg2 # <-- Or use this one if you prefer/need to compile
+requests
+# Remove pysqlite3 if you don't need SQLite elsewhere

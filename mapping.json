@@ -1,0 +1,15 @@
+
+{
+    "Arxiv": {
+      "import": "from agno.tools.arxiv import ArxivTools",
+      "tool": "ArxivTools()"
+    },
+    "Crawl4ai": {
+      "import": "from agno.tools.crawl4ai import Crawl4aiTools",
+      "tool": "Crawl4aiTools(max_length=None)"
+    },
+    "DuckDuckGo": {
+      "import": "from agno.tools.duckduckgo import DuckDuckGoTools",
+      "tool": "DuckDuckGoTools()"
+    }
+  }
