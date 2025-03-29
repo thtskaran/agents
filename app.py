@@ -223,37 +223,53 @@ def start_agent(agent_id):
 
     try:
         print(f"Starting agent {agent_id} with command: {' '.join(command)} on port {port}")
+        
+        # Create logs directory if it doesn't exist
+        log_dir = "logs"
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir)
+            
+        # Redirect stdout/stderr to a log file
+        log_file = os.path.join(log_dir, f"agent_{agent_id}.log")
+        
+        with open(log_file, 'w') as f:
+            process = subprocess.Popen(
+                command,
+                env=agent_env,
+                preexec_fn=os.setsid if os.name == 'posix' else None,
+                creationflags=0,
+                close_fds=False if sys.platform == 'darwin' else True,
+                stdout=f,
+                stderr=subprocess.STDOUT
+            )
+            
+        # Increase wait time to allow agent to start
+        time.sleep(5)
+        
+        # Verify the process is still running
+        if process.poll() is not None:
+            with open(log_file, 'r') as f:
+                error_output = f.read()
+            raise Exception(f"Agent process failed to start. Exit code: {process.poll()}\nLog output: {error_output[:500]}")
+        
+        # Verify the agent is responsive by checking health endpoint
+        import requests
+        health_check_url = f"http://localhost:{port}/health"
+        max_retries = 3
+        
+        for i in range(max_retries):
+            try:
+                response = requests.get(health_check_url, timeout=1)
+                if response.status_code == 200:
+                    break
+            except requests.RequestException as e:
+                if i == max_retries - 1:  # Last attempt failed
+                    with open(log_file, 'r') as f:
+                        error_output = f.read()
+                    raise Exception(f"Agent started but health check failed: {str(e)}\nLog output: {error_output[:500]}")
+                time.sleep(1)
 
-        # Use Popen for non-blocking execution
-        # On Linux/macOS, preexec_fn=os.setsid creates a new session, easier to kill group later if needed
-        # On Windows, use creationflags or default behavior
-        preexec_fn = None
-        creationflags = 0
-        if os.name == 'posix':
-            preexec_fn = os.setsid
-        elif os.name == 'nt':
-            # Example: DETACHED_PROCESS allows parent to exit independently
-            # creationflags = subprocess.DETACHED_PROCESS
-            pass # Default flags often sufficient
-
-        process = subprocess.Popen(
-            command,
-            env=agent_env,
-            preexec_fn=os.setsid if os.name == 'posix' else None,
-            creationflags=creationflags,
-            # Only close non-standard file descriptors
-            close_fds=False if sys.platform == 'darwin' else True,
-            # Remove this as it conflicts with preexec_fn on some platforms
-            # start_new_session=True,
-        )
-        # You could implement a more robust check (e.g., try connecting to agent's /health)
-        time.sleep(2)
-
-        # Check if process started successfully (optional, basic check)
-        if process.poll() is not None: # Process terminated immediately
-             raise Exception(f"Agent process failed to start. Exit code: {process.poll()}")
-
-
+        # Update agent status in database
         agent.status = 'running'
         agent.pid = process.pid
         agent.port = port
@@ -274,15 +290,6 @@ def start_agent(agent_id):
         agent.port = None
         db.session.commit()
         return jsonify({"error": f"Failed to start agent: {e}"}), 500
-
-
-@app.route("/agents/<string:agent_id>/stop", methods=["POST"])
-def stop_agent(agent_id):
-    """Stops the agent's running process."""
-    agent = Agents.query.filter_by(agentid=agent_id).first()
-    if not agent:
-        return jsonify({"message": "Agent not found"}), 404
-
     if agent.status != 'running' or not agent.pid:
         # If status is running but no PID, something is wrong. Fix it.
         if agent.status == 'running' and not agent.pid:
